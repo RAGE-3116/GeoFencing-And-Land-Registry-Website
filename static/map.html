@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Property Map - Digital Land Registry</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-light bg-light">
+        <div class="container">
+            <a class="navbar-brand" href="index.html">🏠 LandRegistry</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="index.html">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="map.html">Map</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="auctions.html">Auctions</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="verify.html">Verify</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" id="authLink" href="login.html">Login</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid py-4">
+        <!-- Search Bar -->
+        <div class="row mb-3">
+            <div class="col-12">
+                <div class="search-container">
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <input type="text" class="form-control" id="usernameSearch" placeholder="Search properties by username...">
+                        </div>
+                        <div class="col-md-3 col-6">
+                            <button class="btn btn-primary w-100" onclick="searchByUsername()">Search</button>
+                        </div>
+                        <div class="col-md-3 col-6">
+                            <button class="btn btn-secondary w-100" onclick="resetSearch()">Reset</button>
+                        </div>
+                    </div>
+                    <div id="searchMessage" class="mt-2"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Map -->
+        <div class="row">
+            <div class="col-12">
+                <div id="map"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const API_URL = 'http://localhost:5000';
+        let map;
+        let allProperties = [];
+        let propertyLayers = [];
+
+        // Initialize map
+        function initMap() {
+            map = L.map('map').setView([28.5355, 77.3910], 13); // Greater Noida coordinates
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 19
+            }).addTo(map);
+        }
+
+        // Fetch and display all properties
+        async function loadProperties() {
+            try {
+                const response = await fetch(`${API_URL}/api/properties`);
+                allProperties = await response.json();
+                displayProperties(allProperties);
+            } catch (error) {
+                console.error('Error loading properties:', error);
+                alert('Failed to load properties');
+            }
+        }
+
+        // Display properties on map
+        function displayProperties(properties) {
+            // Clear existing layers
+            propertyLayers.forEach(layer => map.removeLayer(layer));
+            propertyLayers = [];
+
+            if (properties.length === 0) {
+                return;
+            }
+
+            properties.forEach(property => {
+                try {
+                    // Parse coordinates
+                    const coords = JSON.parse(property.coords);
+                    
+                    // Create polygon
+                    const color = property.verified ? '#10b981' : '#ef4444';
+                    const polygon = L.polygon(coords, {
+                        color: color,
+                        fillColor: color,
+                        fillOpacity: 0.3,
+                        weight: 2
+                    }).addTo(map);
+
+                    // Add popup
+                    polygon.bindPopup(`
+                        <div class="p-2">
+                            <h6 class="mb-2"><strong>${property.property_name}</strong></h6>
+                            <p class="mb-1"><strong>Owner:</strong> ${property.owner}</p>
+                            <p class="mb-0">
+                                <span class="badge ${property.verified ? 'bg-success' : 'bg-danger'}">
+                                    ${property.verified ? '✓ Verified' : '✗ Unverified'}
+                                </span>
+                            </p>
+                        </div>
+                    `);
+
+                    // Add permanent tooltip with owner name (hovering label)
+                    const center = polygon.getBounds().getCenter();
+                    const tooltip = L.tooltip({
+                        permanent: true,
+                        direction: 'center',
+                        className: 'property-label'
+                    })
+                    .setLatLng(center)
+                    .setContent(property.owner)
+                    .addTo(map);
+
+                    propertyLayers.push(polygon);
+                    propertyLayers.push(tooltip);
+                } catch (error) {
+                    console.error('Error displaying property:', property, error);
+                }
+            });
+
+            // Fit map to show all properties
+            if (propertyLayers.length > 0) {
+                const group = L.featureGroup(propertyLayers.filter(l => l instanceof L.Polygon));
+                map.fitBounds(group.getBounds().pad(0.1));
+            }
+        }
+
+        // Search properties by username
+        function searchByUsername() {
+            const username = document.getElementById('usernameSearch').value.trim();
+            const messageDiv = document.getElementById('searchMessage');
+
+            if (!username) {
+                messageDiv.innerHTML = '<div class="alert alert-warning">Please enter a username</div>';
+                return;
+            }
+
+            // Filter properties
+            const matchedProperties = allProperties.filter(p => 
+                p.owner.toLowerCase() === username.toLowerCase()
+            );
+
+            if (matchedProperties.length === 0) {
+                messageDiv.innerHTML = '<div class="alert alert-info">No properties found for this user</div>';
+                return;
+            }
+
+            messageDiv.innerHTML = `<div class="alert alert-success">Found ${matchedProperties.length} property(ies) for ${username}</div>`;
+            
+            // Display only matched properties with highlight
+            displayProperties(matchedProperties);
+        }
+
+        // Reset search
+        function resetSearch() {
+            document.getElementById('usernameSearch').value = '';
+            document.getElementById('searchMessage').innerHTML = '';
+            displayProperties(allProperties);
+        }
+
+        // Update navbar
+        const loggedInUser = localStorage.getItem('loggedInUser');
+        const authLink = document.getElementById('authLink');
+        if (loggedInUser) {
+            authLink.textContent = 'Profile';
+            authLink.href = 'profile.html';
+        }
+
+        // Initialize
+        initMap();
+        loadProperties();
+    </script>
+</body>
+</html>

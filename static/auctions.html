@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auctions - Digital Land Registry</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-light bg-light">
+        <div class="container">
+            <a class="navbar-brand" href="index.html">🏠 LandRegistry</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="index.html">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="map.html">Map</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="auctions.html">Auctions</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="verify.html">Verify</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" id="authLink" href="login.html">Login</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container py-5">
+        <h2 class="mb-4">🔨 Property Auctions</h2>
+
+        <!-- Alert Container -->
+        <div id="alertContainer"></div>
+
+        <!-- Auctions Grid -->
+        <div id="auctionsList" class="row g-4">
+            <div class="col-12 text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading auctions...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bid Modal -->
+    <div class="modal fade" id="bidModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Place Your Bid</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="bidForm">
+                        <input type="hidden" id="bidAuctionId">
+                        <div class="mb-3">
+                            <label class="form-label">Property Name</label>
+                            <input type="text" class="form-control" id="bidPropertyName" readonly>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Current Bid</label>
+                            <input type="text" class="form-control" id="bidCurrentBid" readonly>
+                        </div>
+                        <div class="mb-3">
+                            <label for="bidAmount" class="form-label">Your Bid ($)</label>
+                            <input type="number" class="form-control" id="bidAmount" step="0.01" required>
+                            <small class="text-muted">Must be higher than current bid</small>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">Place Bid</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bid History Modal -->
+    <div class="modal fade" id="historyModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Bid History</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="bidHistoryContent"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const API_URL = 'http://localhost:5000';
+        let currentUser = localStorage.getItem('loggedInUser');
+        let bidModal, historyModal;
+        let updateInterval;
+
+        // Initialize modals
+        bidModal = new bootstrap.Modal(document.getElementById('bidModal'));
+        historyModal = new bootstrap.Modal(document.getElementById('historyModal'));
+
+        function showAlert(message, type = 'success') {
+            const alertContainer = document.getElementById('alertContainer');
+            alertContainer.innerHTML = `
+                <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+            setTimeout(() => {
+                alertContainer.innerHTML = '';
+            }, 5000);
+        }
+
+        // Format time remaining
+        function formatTimeRemaining(endTime) {
+            const now = Date.now() / 1000;
+            const remaining = endTime - now;
+
+            if (remaining <= 0) {
+                return 'ENDED';
+            }
+
+            const days = Math.floor(remaining / 86400);
+            const hours = Math.floor((remaining % 86400) / 3600);
+            const minutes = Math.floor((remaining % 3600) / 60);
+            const seconds = Math.floor(remaining % 60);
+
+            if (days > 0) {
+                return `${days}d ${hours}h ${minutes}m`;
+            } else if (hours > 0) {
+                return `${hours}h ${minutes}m ${seconds}s`;
+            } else if (minutes > 0) {
+                return `${minutes}m ${seconds}s`;
+            } else {
+                return `${seconds}s`;
+            }
+        }
+
+        // Load auctions
+        async function loadAuctions() {
+            try {
+                const response = await fetch(`${API_URL}/api/auctions`);
+                const auctions = await response.json();
+
+                const auctionsList = document.getElementById('auctionsList');
+
+                if (auctions.length === 0) {
+                    auctionsList.innerHTML = `
+                        <div class="col-12 text-center text-muted">
+                            <h4>No auctions available</h4>
+                            <p>Be the first to create an auction!</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                auctionsList.innerHTML = auctions.map(auction => {
+                    const timeRemaining = formatTimeRemaining(auction.end_time);
+                    const isEnded = auction.status === 'ended' || timeRemaining === 'ENDED';
+                    const timerClass = isEnded ? 'auction-ended' : 'auction-active';
+
+                    return `
+                        <div class="col-md-6 col-lg-4">
+                            <div class="card auction-card h-100">
+                                <div class="card-body">
+                                    <h5 class="card-title">${auction.property_name}</h5>
+                                    <p class="--text-primary mb-2">Owner: ${auction.owner}</p>
+                                    <p class="card-text">${auction.description}</p>
+                                    
+                                    <div class="mb-3">
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <span class="--text-primary">Current Bid:</span>
+                                            <strong class="text-success fs-5">$${auction.current_bid.toFixed(2)}</strong>
+                                        </div>
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <span class="--text-primary">Total Bids:</span>
+                                            <span class="badge bg-primary">${auction.bids.length}</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="text-center mb-3">
+                                        <div class="auction-timer ${timerClass}" id="timer-${auction.id}">
+                                            ${isEnded ? '🔴 AUCTION ENDED' : `⏱️ ${timeRemaining}`}
+                                        </div>
+                                    </div>
+
+                                    ${isEnded ? (
+                                        auction.winner ? `
+                                            <div class="winner-badge text-center mb-2">
+                                                🏆 Winner: ${auction.winner}
+                                            </div>
+                                            <p class="text-center --text-primary small mb-2">Property transferred to winner</p>
+                                        ` : `
+                                            <p class="text-center --text-primary mb-2">No bids received</p>
+                                        `
+                                    ) : `
+                                        <div class="d-grid gap-2">
+                                            <button class="btn btn-primary" onclick="openBidModal(${auction.id}, '${auction.property_name}', ${auction.current_bid})" ${!currentUser ? 'disabled' : ''}>
+                                                💰 Place Bid
+                                            </button>
+                                            ${auction.bids.length > 0 ? `
+                                                <button class="btn btn-outline-secondary btn-sm" onclick="showBidHistory(${auction.id})">
+                                                    View Bid History
+                                                </button>
+                                            ` : ''}
+                                        </div>
+                                        ${!currentUser ? '<small class="text-muted d-block text-center mt-2">Login to place bids</small>' : ''}
+                                    `}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                // Start updating timers
+                startTimerUpdates(auctions);
+            } catch (error) {
+                console.error('Error loading auctions:', error);
+                showAlert('Failed to load auctions', 'danger');
+            }
+        }
+
+        // Update timers every second
+        function startTimerUpdates(auctions) {
+            if (updateInterval) {
+                clearInterval(updateInterval);
+            }
+
+            updateInterval = setInterval(() => {
+                let needsReload = false;
+
+                auctions.forEach(auction => {
+                    const timerElement = document.getElementById(`timer-${auction.id}`);
+                    if (timerElement && auction.status === 'active') {
+                        const timeRemaining = formatTimeRemaining(auction.end_time);
+                        
+                        if (timeRemaining === 'ENDED') {
+                            needsReload = true;
+                        } else {
+                            timerElement.textContent = `⏱️ ${timeRemaining}`;
+                        }
+                    }
+                });
+
+                // Reload page if any auction ended
+                if (needsReload) {
+                    loadAuctions();
+                }
+            }, 1000);
+        }
+
+        // Open bid modal
+        function openBidModal(auctionId, propertyName, currentBid) {
+            if (!currentUser) {
+                showAlert('Please login to place bids', 'warning');
+                return;
+            }
+
+            document.getElementById('bidAuctionId').value = auctionId;
+            document.getElementById('bidPropertyName').value = propertyName;
+            document.getElementById('bidCurrentBid').value = `$${currentBid.toFixed(2)}`;
+            document.getElementById('bidAmount').value = '';
+            document.getElementById('bidAmount').min = currentBid + 0.01;
+            bidModal.show();
+        }
+
+        // Place bid
+        document.getElementById('bidForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const auctionId = parseInt(document.getElementById('bidAuctionId').value);
+            const bidAmount = parseFloat(document.getElementById('bidAmount').value);
+
+            try {
+                const response = await fetch(`${API_URL}/api/bid`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        auction_id: auctionId,
+                        bidder: currentUser,
+                        amount: bidAmount
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert('Bid placed successfully!', 'success');
+                    bidModal.hide();
+                    loadAuctions();
+                } else {
+                    showAlert(data.message || 'Failed to place bid', 'danger');
+                }
+            } catch (error) {
+                showAlert('Error placing bid', 'danger');
+                console.error(error);
+            }
+        });
+
+        // Show bid history
+        async function showBidHistory(auctionId) {
+            try {
+                const response = await fetch(`${API_URL}/api/auctions`);
+                const auctions = await response.json();
+                const auction = auctions.find(a => a.id === auctionId);
+
+                if (!auction || auction.bids.length === 0) {
+                    return;
+                }
+
+                // Sort bids by amount (highest first)
+                const sortedBids = [...auction.bids].sort((a, b) => b.amount - a.amount);
+
+                const historyContent = document.getElementById('bidHistoryContent');
+                historyContent.innerHTML = `
+                    <h6 class="mb-3">Property: ${auction.property_name}</h6>
+                    <div class="bid-history">
+                        ${sortedBids.map((bid, index) => `
+                            <div class="bid-item">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong>${bid.bidder}</strong>
+                                        ${index === 0 ? '<span class="badge bg-success ms-2">Highest Bid</span>' : ''}
+                                    </div>
+                                    <div class="text-end">
+                                        <div class="fw-bold text-success">$${bid.amount.toFixed(2)}</div>
+                                        <small class="text-muted">${new Date(bid.timestamp * 1000).toLocaleString()}</small>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+
+                historyModal.show();
+            } catch (error) {
+                console.error('Error loading bid history:', error);
+            }
+        }
+
+        // Update navbar
+        const authLink = document.getElementById('authLink');
+        if (currentUser) {
+            authLink.textContent = 'Profile';
+            authLink.href = 'profile.html';
+        }
+
+        // Load auctions on page load
+        loadAuctions();
+
+        // Cleanup interval on page unload
+        window.addEventListener('beforeunload', () => {
+            if (updateInterval) {
+                clearInterval(updateInterval);
+            }
+        });
+    </script>
+</body>
+</html>

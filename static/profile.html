@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profile - Digital Land Registry</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-light bg-light">
+        <div class="container">
+            <a class="navbar-brand" href="index.html">🏠 LandRegistry</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="index.html">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="map.html">Map</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="auctions.html">Auctions</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="verify.html">Verify</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="profile.html">Profile</a>
+                    </li>
+                    <li class="nav-item">
+                        <button class="btn btn-outline-danger btn-sm" onclick="logout()">Logout</button>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container py-5">
+        <!-- Profile Header -->
+        <div class="profile-header">
+            <h1 id="username">Welcome, User!</h1>
+            <p class="mb-0">Manage your properties and auctions</p>
+        </div>
+
+        <!-- Alert Container -->
+        <div id="alertContainer"></div>
+
+        <!-- Add Property Form -->
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">📍 Add New Property</h5>
+            </div>
+            <div class="card-body">
+                <form id="addPropertyForm">
+                    <div class="mb-3">
+                        <label for="propertyName" class="form-label">Property Name</label>
+                        <input type="text" class="form-control" id="propertyName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="propertyCoords" class="form-label">Coordinates (JSON format)</label>
+                        <textarea class="form-control" id="propertyCoords" rows="4" placeholder='[[28.5355, 77.3910], [28.5365, 77.3920], [28.5355, 77.3930]]' required></textarea>
+                        <small class="--text-primary">Enter polygon coordinates as a JSON array of [latitude, longitude] pairs</small>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Add Property</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- My Properties -->
+<div class="card mb-4">
+    <div class="card-header bg-success text-white">
+        <h5 class="mb-0">🏠 My Properties</h5>
+    </div>
+    <div class="card-body">
+        <div id="propertiesList" class="row g-3">
+            <div class="col-12 text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Danger Zone -->
+<div class="card border-danger">
+    <div class="card-header bg-danger text-white">
+        <h6 class="mb-0">⚠️ Danger Zone</h6>
+    </div>
+    <div class="card-body">
+        <h6 class="mb-2" style="color: #dc3545;">Delete Account</h6>
+        <p class="mb-2" style="font-size: 0.9rem; color: #94a3b8;">
+            Permanently delete your account and all associated data.
+        </p>
+        <p class="mb-3" style="font-size: 0.85rem; color: #ef4444;">
+            <strong>⚠️ Warning:</strong> Cannot delete if you have active auctions.
+        </p>
+        <button class="btn btn-danger btn-sm" onclick="deleteAccount()">
+            🗑️ Delete Account
+        </button>
+    </div>
+</div>
+
+    <!-- Create Auction Modal -->
+    <div class="modal fade" id="auctionModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Create Auction</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="createAuctionForm">
+                        <input type="hidden" id="auctionPropertyId">
+                        <div class="mb-3">
+                            <label class="form-label">Property Name</label>
+                            <input type="text" class="form-control" id="auctionPropertyName" readonly>
+                        </div>
+                        <div class="mb-3">
+                            <label for="startingBid" class="form-label">Starting Bid ($)</label>
+                            <input type="number" class="form-control" id="startingBid" min="1" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="duration" class="form-label">Duration (hours)</label>
+                            <input type="number" class="form-control" id="duration" min="1" max="168" value="24" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="description" class="form-label">Description</label>
+                            <textarea class="form-control" id="description" rows="3" required></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">Create Auction</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const API_URL = 'http://localhost:5000';
+        let currentUser = localStorage.getItem('loggedInUser');
+        let auctionModal;
+
+        // Check if logged in
+        if (!currentUser) {
+            window.location.href = 'login.html';
+        }
+
+        // Display username
+        document.getElementById('username').textContent = `Welcome, ${currentUser}!`;
+
+        // Initialize modal
+        auctionModal = new bootstrap.Modal(document.getElementById('auctionModal'));
+
+        function showAlert(message, type = 'success') {
+            const alertContainer = document.getElementById('alertContainer');
+            alertContainer.innerHTML = `
+                <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+            setTimeout(() => {
+                alertContainer.innerHTML = '';
+            }, 5000);
+        }
+
+        // Add Property
+        document.getElementById('addPropertyForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const propertyName = document.getElementById('propertyName').value;
+            const coordsText = document.getElementById('propertyCoords').value;
+
+            try {
+                // Validate JSON
+                const coords = JSON.parse(coordsText);
+                
+                const response = await fetch(`${API_URL}/api/add-property`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        owner: currentUser,
+                        property_name: propertyName,
+                        coords: coordsText
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert('Property added successfully!', 'success');
+                    document.getElementById('addPropertyForm').reset();
+                    loadProperties();
+                } else {
+                    showAlert(data.message || 'Failed to add property', 'danger');
+                }
+            } catch (error) {
+                if (error instanceof SyntaxError) {
+                    showAlert('Invalid JSON format for coordinates', 'danger');
+                } else {
+                    showAlert('Error adding property', 'danger');
+                }
+                console.error(error);
+            }
+        });
+
+        // Load user's properties
+        async function loadProperties() {
+            try {
+                const response = await fetch(`${API_URL}/api/properties`);
+                const allProperties = await response.json();
+                const userProperties = allProperties.filter(p => p.owner === currentUser);
+
+                const propertiesList = document.getElementById('propertiesList');
+
+                if (userProperties.length === 0) {
+                    propertiesList.innerHTML = `
+                        <div class="col-12 text-center text-muted">
+                            <p>You haven't added any properties yet.</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                propertiesList.innerHTML = userProperties.map(property => `
+    <div class="col-md-6">
+        <div class="card property-card">
+            <div class="card-body">
+                <span class="property-badge badge ${property.verified ? 'bg-success' : 'bg-warning'}">
+                    ${property.verified ? '✓ Verified' : '⏳ Pending'}
+                </span>
+                <h5 class="card-title mt-2">${property.property_name}</h5>
+                <p class="card-text text-muted mb-2">Property ID: ${property.id}</p>
+                <div class="d-flex gap-2 flex-wrap">
+                    ${property.verified ? `
+                        <button class="btn btn-primary btn-sm" onclick="openAuctionModal(${property.id}, '${property.property_name}')">
+                            🔨 Create Auction
+                        </button>
+                    ` : `
+                        <span class="text-muted small">Verification required</span>
+                    `}
+                    <button class="btn btn-danger btn-sm" onclick="deleteProperty(${property.id}, '${property.property_name}')">
+                        🗑️ Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+`).join('');
+            } catch (error) {
+                console.error('Error loading properties:', error);
+            }
+        }
+
+        // Open auction modal
+        function openAuctionModal(propertyId, propertyName) {
+            document.getElementById('auctionPropertyId').value = propertyId;
+            document.getElementById('auctionPropertyName').value = propertyName;
+            document.getElementById('createAuctionForm').reset();
+            document.getElementById('auctionPropertyName').value = propertyName;
+            auctionModal.show();
+        }
+
+        // Delete property
+async function deleteProperty(propertyId, propertyName) {
+    if (!confirm(`Are you sure you want to delete "${propertyName}"?\n\nThis action cannot be undone.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/api/delete-property`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                id: propertyId,
+                owner: currentUser
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showAlert('Property deleted successfully!', 'success');
+            loadProperties();
+        } else {
+            showAlert(data.message || 'Failed to delete property', 'danger');
+        }
+    } catch (error) {
+        showAlert('Error deleting property', 'danger');
+        console.error(error);
+    }
+}
+
+// Delete account
+async function deleteAccount() {
+    const password = prompt('⚠️ WARNING: This will permanently delete your account!\n\nEnter your password to confirm:');
+    
+    if (!password) {
+        return;
+    }
+
+    if (!confirm('Are you ABSOLUTELY sure?\n\nThis will delete:\n• Your account\n• All your properties\n• All your bids\n• All your auctions\n\nThis CANNOT be undone!')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/api/delete-account`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                username: currentUser,
+                password: password
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert('Account deleted successfully. You will be logged out.');
+            localStorage.removeItem('loggedInUser');
+            window.location.href = 'login.html';
+        } else {
+            showAlert(data.message || 'Failed to delete account', 'danger');
+        }
+    } catch (error) {
+        showAlert('Error deleting account', 'danger');
+        console.error(error);
+    }
+}
+
+        // Create Auction
+        document.getElementById('createAuctionForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const propertyId = parseInt(document.getElementById('auctionPropertyId').value);
+            const startingBid = parseFloat(document.getElementById('startingBid').value);
+            const duration = parseFloat(document.getElementById('duration').value);
+            const description = document.getElementById('description').value;
+
+            try {
+                const response = await fetch(`${API_URL}/api/create-auction`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        property_id: propertyId,
+                        starting_bid: startingBid,
+                        duration_hours: duration,
+                        description: description
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert('Auction created successfully!', 'success');
+                    auctionModal.hide();
+                    loadProperties();
+                } else {
+                    showAlert(data.message || 'Failed to create auction', 'danger');
+                }
+            } catch (error) {
+                showAlert('Error creating auction', 'danger');
+                console.error(error);
+            }
+        });
+
+        // Logout
+        function logout() {
+            localStorage.removeItem('loggedInUser');
+            window.location.href = 'login.html';
+        }
+
+        // Load properties on page load
+        loadProperties();
+        
+    </script>
+</body>
+</html>
