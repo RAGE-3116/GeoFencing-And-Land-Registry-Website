@@ -18,9 +18,9 @@ try:
     import cloudinary.uploader
     
     # Try to configure from environment variables
-    cloud_name = os.getenv('CLOUDINARY_CLOUD_NAME')
-    api_key = os.getenv('CLOUDINARY_API_KEY')
-    api_secret = os.getenv('CLOUDINARY_API_SECRET')
+    cloud_name = os.getenv('dxlwrxwjl')
+    api_key = os.getenv('925297674287918')
+    api_secret = os.getenv('v7L380npsH5M8UsU5iBrV4IhDkk')
     
     if all([cloud_name, api_key, api_secret]):
         cloudinary.config(
