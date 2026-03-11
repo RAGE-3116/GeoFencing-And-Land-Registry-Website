@@ -4,9 +4,14 @@ import sqlite3
 import json
 from datetime import datetime
 import os
+from dotenv import load_dotenv 
+
+load_dotenv()
 
 app = Flask(__name__, static_folder='static')
 CORS(app)
+
+
 
 # Database configuration
 DATABASE = 'land_registry.db'
@@ -18,9 +23,9 @@ try:
     import cloudinary.uploader
     
     # Try to configure from environment variables
-    cloud_name = os.getenv('dxlwrxwjl')
-    api_key = os.getenv('925297674287918')
-    api_secret = os.getenv('v7L380npsH5M8UsU5iBrV4IhDkk')
+    cloud_name = os.getenv('CLOUDINARY_CLOUD_NAME')
+    api_key = os.getenv('CLOUDINARY_API_KEY')
+    api_secret = os.getenv('CLOUDINARY_API_SECRET')
     
     if all([cloud_name, api_key, api_secret]):
         cloudinary.config(
